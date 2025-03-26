@@ -57,9 +57,9 @@ class MatrixInfluxBridge:
         """Connect to Matrix server and join the specified room"""
         logger.info(f"Logging in to Matrix as {self.settings.matrix.user}...")
         response: LoginResponse = await self.matrix_client.login(password=self.settings.matrix.password)
-        if not response.transport_response.is_ok:
-            logger.error(f"Failed to log in with status code: {response.transport_response.status_code}")
-            raise Exception(f"Failed to log in: {response.transport_response.status_code}")
+        if not response.transport_response.ok:
+            logger.error(f"Failed to log in with status code: {response.transport_response.status}")
+            raise Exception(f"Failed to log in: {response.transport_response.status}")
         logger.info("Successfully logged in")
 
     def store_message_in_influx(self, room_id: str, sender: str, message: str, timestamp: datetime) -> None:
