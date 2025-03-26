@@ -1,0 +1,12 @@
+services:
+  matrix-influx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: matrix-influx
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    environment:
+      - TZ=America/New_York
