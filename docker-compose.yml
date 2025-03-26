@@ -1,8 +1,6 @@
 services:
   matrix-influx:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/samanthavbarron/matrix-influx
     container_name: matrix-influx
     volumes:
       - ./logs:/app/logs
