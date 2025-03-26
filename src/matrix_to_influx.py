@@ -147,8 +147,9 @@ class MatrixInfluxBridge:
         await self.connect_to_matrix()
         
         # Join the room if not already joined
-        await self.matrix_client.join(self.settings.matrix.room_id)
-        logger.info(f"Joined room {self.settings.matrix.room_id}")
+        for room_id in self.monitored_rooms:
+            await self.matrix_client.join(room_id)
+            logger.info(f"Monitoring room {room_id}")
 
         # Fetch historical messages first
         await self.fetch_historical_messages()
