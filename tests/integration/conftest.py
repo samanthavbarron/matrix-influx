@@ -51,28 +51,30 @@ def synapse_container() -> Generator[dict, None, None]:
     data_dir = Path("./synapse-data")
     data_dir.mkdir(exist_ok=True)
     
-    # Generate config
+    # Generate initial configuration using migrate_config
     client.containers.run(
         "matrixdotorg/synapse:latest",
-        "generate",
+        "migrate_config",
         remove=True,
         environment={
             "SYNAPSE_SERVER_NAME": "test.local",
-            "SYNAPSE_REPORT_STATS": "no"
+            "SYNAPSE_REPORT_STATS": "no",
+            "SYNAPSE_ENABLE_REGISTRATION": "yes",
+            "SYNAPSE_NO_TLS": "yes",
+            "SYNAPSE_LOG_LEVEL": "INFO"
         },
         volumes={
             str(data_dir.absolute()): {'bind': '/data', 'mode': 'rw'}
         }
     )
     
-    # Start Synapse
+    # Start Synapse with the generated config
     container = client.containers.run(
         "matrixdotorg/synapse:latest",
         detach=True,
         remove=True,
         environment={
-            "SYNAPSE_SERVER_NAME": "test.local",
-            "SYNAPSE_REPORT_STATS": "no"
+            "SYNAPSE_LOG_LEVEL": "INFO"
         },
         volumes={
             str(data_dir.absolute()): {'bind': '/data', 'mode': 'rw'}
@@ -81,7 +83,30 @@ def synapse_container() -> Generator[dict, None, None]:
     )
     
     # Wait for Synapse to be ready
-    time.sleep(10)
+    max_retries = 30
+    retry_interval = 1
+    for _ in range(max_retries):
+        try:
+            logs = container.logs().decode('utf-8')
+            if "Synapse now listening on port 8008" in logs:
+                break
+        except Exception:
+            pass
+        time.sleep(retry_interval)
+    else:
+        raise TimeoutError("Synapse failed to start within the expected time")
+    
+    # Create admin user
+    container.exec_run(
+        [
+            "register_new_matrix_user",
+            "-c", "/data/homeserver.yaml",
+            "--admin",
+            "-u", "admin",
+            "-p", "admin_password",
+            "http://localhost:8008"
+        ]
+    )
     
     try:
         yield {
