@@ -1,7 +1,9 @@
 # Matrix to InfluxDB Bridge
 
-[![Tests](https://github.com/yourusername/matrix-to-influxdb/actions/workflows/tests.yml/badge.svg)](https://github.com/yourusername/matrix-to-influxdb/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/gh/yourusername/matrix-to-influxdb/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/matrix-to-influxdb)
+**NOTE FROM SAMANTHA:** This code was almost entirely generated with Windsurf.
+
+[![Tests](https://github.com/samanthavbarron/matrix-to-influxdb/actions/workflows/tests.yml/badge.svg)](https://github.com/samanthavbarron/matrix-to-influxdb/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/samanthavbarron/matrix-to-influxdb/branch/main/graph/badge.svg)](https://codecov.io/gh/samanthavbarron/matrix-to-influxdb)
 
 This application scrapes messages from a Matrix Chat server and stores them in InfluxDB for analysis and monitoring.
 
