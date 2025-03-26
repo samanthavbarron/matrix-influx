@@ -1,15 +1,5 @@
 {
     "name": "Matrix-Influx Development",
-    "build": {
-        "dockerfile": "Dockerfile",
-        "context": ".."
-    },
-    "features": {
-        "ghcr.io/devcontainers/features/python:1": {
-            "version": "3.13"
-        },
-        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-    },
     "customizations": {
         "vscode": {
             "extensions": [
@@ -34,7 +24,5 @@
             }
         }
     },
-    "forwardPorts": [8008],
-    "postCreateCommand": "pip install -e '.[test,integration]'",
-    "remoteUser": "vscode"
+    "postCreateCommand": "pip install -e '.[test,integration]'"
 }
