@@ -15,6 +15,7 @@ class InfluxDBConfig(BaseModel):
     token: str
     org: str
     bucket: str
+    store_content: bool = False  # Controls whether message content is stored
 
 
 class LogConfig(BaseModel):

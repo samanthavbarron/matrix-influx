@@ -37,6 +37,7 @@ This application scrapes messages from a Matrix Chat server and stores them in I
      - `INFLUXDB_TOKEN`: Your InfluxDB API token
      - `INFLUXDB_ORG`: Your InfluxDB organization
      - `INFLUXDB_BUCKET`: The bucket to store messages in
+     - `INFLUXDB_STORE_CONTENT`: (Optional) Set to 'false' to disable storing message content, defaults to 'true'
 
 ## Running the Application
 

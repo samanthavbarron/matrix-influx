@@ -111,8 +111,14 @@ class MatrixInfluxBridge:
                                 .tag("sender", event.source.get('sender', event.sender))\
                                 .tag("room_id", room_id)\
                                 .tag("message_type", type(event).__name__)\
-                                .field("content", event.body)\
                                 .time(event.source.get('origin_server_ts', event.server_timestamp))
+                            
+                            # Only store content if enabled
+                            if self.settings.influxdb.store_content:
+                                point = point.field("content", event.body)
+                            
+                            # Always store message length as a metric
+                            point = point.field("content_length", len(event.body))
 
                             # Write to InfluxDB
                             self.write_api.write(
@@ -135,11 +141,24 @@ class MatrixInfluxBridge:
 
     async def handle_message(self, room_id: str, event: RoomMessageText) -> None:
         """Process a single message event"""
-        self.store_message_in_influx(
-            room_id=room_id,
-            sender=event.sender,
-            message=event.body,
-            timestamp=datetime.fromtimestamp(event.server_timestamp / 1000)
+        # Create InfluxDB point
+        point = Point("matrix_message")\
+            .tag("sender", event.source.get('sender', event.sender))\
+            .tag("room_id", room_id)\
+            .tag("message_type", type(event).__name__)\
+            .time(event.source.get('origin_server_ts', event.server_timestamp))
+        
+        # Only store content if enabled
+        if self.settings.influxdb.store_content:
+            point = point.field("content", event.body)
+        
+        # Always store message length as a metric
+        point = point.field("content_length", len(event.body))
+
+        # Write to InfluxDB
+        self.write_api.write(
+            bucket=self.settings.influxdb.bucket,
+            record=point
         )
 
     async def run(self) -> None:

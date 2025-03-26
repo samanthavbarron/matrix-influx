@@ -196,7 +196,11 @@ async def test_message_type_handling(bridge, mock_messages):
         assert point._tags["message_type"] == "RoomMessageText"
         assert point._tags["sender"] == msg.source["sender"]
         assert point._tags["room_id"] == "!test1:matrix.org"
-        assert point._fields["content"] == msg.body
+        assert point._fields["content_length"] == len(msg.body)
+        if bridge.settings.influxdb.store_content:
+            assert point._fields["content"] == msg.body
+        else:
+            assert "content" not in point._fields
 
 
 async def test_error_handling(bridge):
@@ -237,11 +241,13 @@ async def test_error_handling(bridge):
 
 
 @pytest.fixture
-def mock_settings(mocker: MockerFixture):
+def mock_settings(mocker: MockerFixture, request):
     """Create mocked settings for testing."""
     settings = mocker.MagicMock()
     settings.matrix = mocker.MagicMock()
     settings.influxdb = mocker.MagicMock()
+    # Allow parametrizing store_content
+    settings.influxdb.store_content = getattr(request, 'param', {}).get('store_content', False)
     return settings
 
 
@@ -294,6 +300,59 @@ async def test_main_keyboard_interrupt(mock_settings, mocker: MockerFixture):
     # Verify cleanup was performed
     mock_bridge.matrix_client.close.assert_called_once()
     mock_bridge.influx_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mock_settings', [
+    {'store_content': True},
+    {'store_content': False}
+], indirect=True)
+async def test_message_content_storage(mock_settings, mocker: MockerFixture):
+    """Test that message content storage respects the store_content setting."""
+    # Mock setup_logging
+    mocker.patch('src.matrix_to_influx.setup_logging')
+    
+    # Create a bridge instance
+    bridge = MatrixInfluxBridge(mock_settings)
+    
+    # Mock the write_api
+    mock_write_api = mocker.MagicMock()
+    bridge.write_api = mock_write_api
+    
+    # Create a test message
+    test_message = "Test message content"
+    timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+    event = RoomMessageText(
+        source={
+            "event_id": "!test1:matrix.org",
+            "sender": "@test:matrix.org",
+            "origin_server_ts": timestamp
+        },
+        body=test_message,
+        formatted_body="<p>Test message content</p>",
+        format="org.matrix.custom.html",
+    )
+    
+    # Process the message
+    await bridge.handle_message("!test_room:matrix.org", event)
+    
+    # Verify the write call
+    assert mock_write_api.write.called
+    call_args = mock_write_api.write.call_args[1]
+    point = call_args['record']
+    # Get all fields from the point
+    fields = {k: v for k, v in point._fields.items()}
+    
+    # Always check for content_length
+    assert 'content_length' in fields
+    assert fields['content_length'] == len(test_message)
+    
+    # Check content field based on store_content setting
+    if mock_settings.influxdb.store_content:
+        assert 'content' in fields
+        assert fields['content'] == test_message
+    else:
+        assert 'content' not in fields
 
 
 class MockLoginResponse:
