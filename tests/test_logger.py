@@ -12,7 +12,7 @@ def test_setup_logging(test_settings, temp_dir: Path):
     setup_logging(test_settings)
     
     root_logger = logging.getLogger()
-    assert root_logger.level == logging.INFO
+    assert root_logger.level == logging.DEBUG
     
     # Should have console and file handlers
     assert len(root_logger.handlers) == 2
