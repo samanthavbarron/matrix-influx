@@ -1,0 +1,37 @@
+[project]
+name = "matrix-to-influx"
+version = "0.1.0"
+description = "Matrix to InfluxDB bridge"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matrix-nio",
+    "influxdb-client",
+    "python-dotenv",
+    "pydantic",
+    "pydantic-settings",
+    "pytest>=8.3.5",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-mock",
+    "aioresponses",
+    "docker"
+]
+
+integration = [
+    "docker"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v --cov=src --cov-report=term-missing"
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m 'not integration'')"
+]
