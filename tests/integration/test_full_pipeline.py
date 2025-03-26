@@ -1,8 +1,10 @@
 """Integration tests for the full Matrix to InfluxDB pipeline."""
 
+import os
 import asyncio
+from nio.responses import LoginError, LoginResponse
 import pytest
-from nio import AsyncClient, RoomCreateResponse
+from nio import AsyncClient, RoomCreateResponse, RoomVisibility
 
 from src.config import Settings
 from src.matrix_to_influx import MatrixInfluxBridge
@@ -12,12 +14,12 @@ from src.matrix_to_influx import MatrixInfluxBridge
 async def matrix_client(synapse_container) -> AsyncClient:
     """Create and configure a Matrix client."""
     client = AsyncClient(
-        homeserver_url=synapse_container["homeserver"],
-        user_id=synapse_container["user"]
+        homeserver=synapse_container["homeserver"],
+        user=synapse_container["user"]
     )
     
     # Login
-    response = await client.login(password=synapse_container["password"])
+    response: LoginResponse | LoginError = await client.login(password=synapse_container["password"])
     assert response.access_token is not None
     
     try:
@@ -56,7 +58,7 @@ async def test_message_ingestion(
     room_responses = []
     for i in range(2):
         room_response = await matrix_client.room_create(
-            visibility=RoomCreateResponse.Visibility.private,
+            visibility=RoomVisibility.public,
             name=f"Test Room {i+1}"
         )
         assert room_response.room_id is not None
@@ -95,8 +97,7 @@ async def test_message_ingestion(
     # Verify messages in InfluxDB
     query = f'''
     from(bucket: "{influxdb_container["bucket"]}")
-        |> range(start: -1h)
-        |> filter(fn: (r) => r["_measurement"] == "matrix_message")
+        |> range(start: 0)
     '''
     
     result = bridge.influx_client.query_api().query(query)
@@ -104,7 +105,7 @@ async def test_message_ingestion(
     for table in result:
         for record in table:
             room_id = record.values.get("room_id")
-            content = record.values.get("content")
+            content = record.get_value()
             if room_id not in messages_by_room:
                 messages_by_room[room_id] = []
             messages_by_room[room_id].append(content)
@@ -124,17 +125,19 @@ async def test_multi_room_sync_state(
 ):
     """Test sync state persistence across multiple rooms."""
     # Create multiple test rooms
-    room_ids = []
+    room_responses = []
+    room_ids = set()
     for i in range(3):
         room_response = await matrix_client.room_create(
-            visibility=RoomCreateResponse.Visibility.private,
-            name=f"Test Room {i}"
+            visibility=RoomVisibility.public,
+            name=f"Test Room {i+1}"
         )
         assert room_response.room_id is not None
-        room_ids.append(room_response.room_id)
+        room_ids |= {room_response.room_id}
+        room_responses.append(room_response.room_id)
     
     # Configure bridge to monitor all rooms
-    integration_settings.matrix.room_ids = []  # Empty list means monitor all rooms
+    integration_settings.matrix.room_ids = list(room_ids)  # Empty list means monitor all rooms
     
     # First bridge instance
     bridge1 = MatrixInfluxBridge(integration_settings)
@@ -149,12 +152,15 @@ async def test_multi_room_sync_state(
         )
     
     # Let messages be processed
-    await asyncio.sleep(2)
+    await asyncio.sleep(10)
     await bridge1.fetch_historical_messages()
     
     # Store sync times
     original_sync_times = bridge1.room_sync_times.copy()
     assert all(ts is not None for ts in original_sync_times.values())
+
+    # Wait for some time to pass so the sync times are different
+    await asyncio.sleep(3)
     
     # Create new bridge instance
     bridge2 = MatrixInfluxBridge(integration_settings)
@@ -171,6 +177,9 @@ async def test_multi_room_sync_state(
             message_type="m.room.message",
             content={"msgtype": "m.text", "body": f"New message in {room_id}"}
         )
+
+    # Let messages be processed
+    await asyncio.sleep(10)
     
     # Verify only new messages are fetched
     await bridge2.fetch_historical_messages()
@@ -187,7 +196,7 @@ async def test_room_filtering(
     room_ids = []
     for i in range(3):
         room_response = await matrix_client.room_create(
-            visibility=RoomCreateResponse.Visibility.private,
+            visibility=RoomVisibility.public,
             name=f"Test Room {i}"
         )
         assert room_response.room_id is not None

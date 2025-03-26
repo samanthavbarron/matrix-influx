@@ -29,7 +29,11 @@ class MatrixInfluxBridge:
         )
         self.write_api: WriteApi = self.influx_client.write_api(write_options=SYNCHRONOUS)
         self.room_sync_times: Dict[str, Optional[int]] = {}
-        self.monitored_rooms: Set[str] = set()
+
+        if not settings.matrix.room_ids:
+            self.monitored_rooms = set(self.matrix_client.rooms.keys())
+        else:
+            self.monitored_rooms = set(settings.matrix.room_ids)
         self.load_sync_state()
 
     def load_sync_state(self) -> None:
@@ -39,8 +43,7 @@ class MatrixInfluxBridge:
                 state = json.load(f)
                 self.room_sync_times = {room: ts for room, ts in state.items()}
                 for room_id, timestamp in self.room_sync_times.items():
-                    time_str = datetime.fromtimestamp(timestamp / 1000) if timestamp else 'Never'
-                    logger.info(f"Room {room_id} last sync time: {time_str}")
+                    logger.info(f"Room {room_id} last sync time: {timestamp}")
         except FileNotFoundError:
             logger.info("No previous sync state found")
             self.room_sync_times = {}
@@ -89,7 +92,7 @@ class MatrixInfluxBridge:
             if not last_sync:
                 logger.info(f"No previous sync time for room {room_id}, fetching all available messages...")
             else:
-                logger.info(f"Fetching messages for room {room_id} since {datetime.fromtimestamp(last_sync / 1000)}")
+                logger.info(f"Fetching messages for room {room_id} since {last_sync}")
 
             try:
                 # Fetch messages since last sync
@@ -120,10 +123,7 @@ class MatrixInfluxBridge:
 
                     # Update sync time for this room
                     if response.chunk:
-                        self.room_sync_times[room_id] = response.chunk[-1].source.get(
-                            'origin_server_ts',
-                            response.chunk[-1].server_timestamp
-                        )
+                        self.room_sync_times[room_id] = response.end
                         self.save_sync_state()
 
                 else:
