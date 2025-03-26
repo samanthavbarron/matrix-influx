@@ -29,6 +29,7 @@ class MatrixInfluxBridge:
         )
         self.write_api: WriteApi = self.influx_client.write_api(write_options=SYNCHRONOUS)
         self.room_sync_times: Dict[str, Optional[int]] = {}
+        self.last_sync_time: Optional[int] = None
 
         if not settings.matrix.room_ids:
             self.monitored_rooms = set(self.matrix_client.rooms.keys())
