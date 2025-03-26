@@ -19,7 +19,7 @@ RUN mkdir -p /app/logs
 
 # Run as non-root user
 RUN useradd -m matrixuser
-RUN chown -R matrixuser:matrixuser /app
+RUN chown -R matrixuser:matrixuser /app 
 USER matrixuser
 
 CMD ["python", "src/matrix_to_influx.py"]
