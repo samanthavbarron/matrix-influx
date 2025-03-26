@@ -22,4 +22,4 @@ RUN useradd -m matrixuser
 RUN chown -R matrixuser:matrixuser /app
 USER matrixuser
 
-CMD ["python", "-m", "src.main"]
+CMD ["python", "src/matrix_to_influx.py"]
