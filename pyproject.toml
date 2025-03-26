@@ -24,7 +24,8 @@ test = [
 ]
 
 integration = [
-    "pytest-docker>=2.0.0"
+    "pytest-docker>=2.0.0",
+    "docker"
 ]
 
 [tool.pytest.ini_options]
