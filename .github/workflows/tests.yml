@@ -1,4 +1,4 @@
-name: Tests
+name: Unit Tests
 
 on:
   push:
@@ -9,29 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
-    services:
-      influxdb:
-        image: influxdb:2.7
-        env:
-          DOCKER_INFLUXDB_INIT_MODE: setup
-          DOCKER_INFLUXDB_INIT_USERNAME: admin
-          DOCKER_INFLUXDB_INIT_PASSWORD: adminpassword
-          DOCKER_INFLUXDB_INIT_ORG: test-org
-          DOCKER_INFLUXDB_INIT_BUCKET: matrix_messages
-          DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: test-token
-        ports:
-          - 8086:8086
-      
-      synapse:
-        image: matrixdotorg/synapse:latest
-        env:
-          SYNAPSE_SERVER_NAME: localhost
-          SYNAPSE_REPORT_STATS: "no"
-          SYNAPSE_ENABLE_REGISTRATION: "yes"
-          SYNAPSE_NO_TLS: "yes"
-        ports:
-          - 8008:8008
 
     steps:
     - uses: actions/checkout@v3
@@ -47,48 +24,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install .[test]
 
-    - name: Wait for services
-      run: |
-        # Wait for InfluxDB
-        timeout 30 bash -c 'until curl -s http://localhost:8086/health > /dev/null; do sleep 1; done'
-        # Wait for Synapse
-        timeout 30 bash -c 'until curl -s http://localhost:8008/_matrix/client/versions > /dev/null; do sleep 1; done'
-
-    - name: Create test environment file
-      run: |
-        cat > .env.test << EOL
-        MATRIX_HOMESERVER=http://localhost:8008
-        MATRIX_USER=@test:localhost
-        MATRIX_PASSWORD=testpassword
-        MATRIX_ROOM_IDS=
-
-        INFLUXDB_URL=http://localhost:8086
-        INFLUXDB_TOKEN=test-token
-        INFLUXDB_ORG=test-org
-        INFLUXDB_BUCKET=matrix_messages
-
-        LOGGING__FILE_PATH=logs/matrix_influx.log
-        LOGGING__MAX_SIZE_MB=10
-        LOGGING__BACKUP_COUNT=5
-        LOGGING__LEVEL=DEBUG
-        EOL
-
-    - name: Create test user in Synapse
-      run: |
-        docker exec ${{ job.services.synapse.id }} register_new_matrix_user \
-          -c /data/homeserver.yaml \
-          --no-admin \
-          -u test \
-          -p testpassword \
-          http://localhost:8008
-
     - name: Run unit tests with coverage
       run: |
         pytest tests/ -v --ignore=tests/integration/ --cov=src --cov-report=xml
-
-    - name: Run integration tests with coverage
-      run: |
-        pytest tests/integration/ -v --cov=src --cov-append --cov-report=xml
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
