@@ -11,7 +11,7 @@ from nio import (
 )
 from influxdb_client import Point
 
-from src.matrix_to_influx import MatrixInfluxBridge
+from src.matrix_to_influx import MatrixInfluxBridge, main
 
 
 @pytest.fixture
@@ -234,6 +234,66 @@ async def test_error_handling(bridge):
     
     with pytest.raises(Exception, match="Write Error"):
         await bridge.fetch_historical_messages()
+
+
+@pytest.fixture
+def mock_settings(mocker: MockerFixture):
+    """Create mocked settings for testing."""
+    settings = mocker.MagicMock()
+    settings.matrix = mocker.MagicMock()
+    settings.influxdb = mocker.MagicMock()
+    return settings
+
+
+@pytest.mark.asyncio
+async def test_main_normal_shutdown(mock_settings, mocker: MockerFixture):
+    """Test normal startup and shutdown of the main function."""
+    # Mock setup_logging
+    mock_setup_logging = mocker.patch('src.matrix_to_influx.setup_logging')
+    
+    # Mock MatrixInfluxBridge
+    mock_bridge = mocker.MagicMock()
+    mock_bridge.run = AsyncMock()
+    mock_bridge.matrix_client = AsyncMock()
+    mock_bridge.influx_client = mocker.MagicMock()
+    mock_bridge_cls = mocker.patch('src.matrix_to_influx.MatrixInfluxBridge', return_value=mock_bridge)
+    
+    # Mock Settings
+    mocker.patch('src.matrix_to_influx.Settings', return_value=mock_settings)
+    
+    # Run main
+    await main()
+    
+    # Verify
+    mock_setup_logging.assert_called_once_with(mock_settings)
+    mock_bridge_cls.assert_called_once_with(mock_settings)
+    mock_bridge.run.assert_called_once()
+    mock_bridge.matrix_client.close.assert_called_once()
+    mock_bridge.influx_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_main_keyboard_interrupt(mock_settings, mocker: MockerFixture):
+    """Test handling of keyboard interrupt during main execution."""
+    # Mock setup_logging
+    mocker.patch('src.matrix_to_influx.setup_logging')
+    
+    # Mock MatrixInfluxBridge
+    mock_bridge = mocker.MagicMock()
+    mock_bridge.run = AsyncMock(side_effect=KeyboardInterrupt)
+    mock_bridge.matrix_client = AsyncMock()
+    mock_bridge.influx_client = mocker.MagicMock()
+    mocker.patch('src.matrix_to_influx.MatrixInfluxBridge', return_value=mock_bridge)
+    
+    # Mock Settings
+    mocker.patch('src.matrix_to_influx.Settings', return_value=mock_settings)
+    
+    # Run main
+    await main()
+    
+    # Verify cleanup was performed
+    mock_bridge.matrix_client.close.assert_called_once()
+    mock_bridge.influx_client.close.assert_called_once()
 
 
 class MockLoginResponse:
