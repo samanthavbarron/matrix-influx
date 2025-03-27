@@ -1,7 +1,8 @@
 """Database schema for Matrix message storage."""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text
+
+from sqlalchemy import Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase
 
 
