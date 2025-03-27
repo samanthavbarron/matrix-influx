@@ -9,11 +9,12 @@ from nio import (
     MatrixRoom, Event, RoomMessagesResponse, MessageDirection,
     RoomMember, RoomMemberEvent, JoinedRoomsResponse
 )
-from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import SYNCHRONOUS, WriteApi
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from config import Settings
 from logger import setup_logging, get_logger
+from schema import Base, Message
 
 # Create logger for this module
 logger = get_logger(__name__)
@@ -22,12 +23,8 @@ class MatrixInfluxBridge:
     def __init__(self, settings: Settings) -> None:
         self.settings: Settings = settings
         self.matrix_client: AsyncClient = AsyncClient(settings.matrix.homeserver, settings.matrix.user)
-        self.influx_client: InfluxDBClient = InfluxDBClient(
-            url=settings.influxdb.url,
-            token=settings.influxdb.token,
-            org=settings.influxdb.org
-        )
-        self.write_api: WriteApi = self.influx_client.write_api(write_options=SYNCHRONOUS)
+        self.engine = create_engine(settings.postgres.url)
+        Base.metadata.create_all(self.engine)
         self.room_sync_times: Dict[str, Optional[int]] = {}
         self.last_sync_time: Optional[int] = None
 
@@ -66,15 +63,19 @@ class MatrixInfluxBridge:
             raise Exception(f"Failed to log in: {response.transport_response.status}")
         logger.info("Successfully logged in")
 
-    def store_message_in_influx(self, room_id: str, sender: str, message: str, timestamp: datetime) -> None:
-        """Store a Matrix message in InfluxDB"""
-        point: Point = Point("matrix_messages") \
-            .tag("room_id", room_id) \
-            .tag("sender", sender) \
-            .field("message", message) \
-            .time(timestamp)
-
-        self.write_api.write(bucket=self.settings.influxdb.bucket, record=point)
+    def store_message_in_db(self, room_id: str, sender: str, message: str, timestamp: datetime, message_type: str) -> None:
+        """Store a Matrix message in PostgreSQL"""
+        with Session(self.engine) as session:
+            msg = Message(
+                room_id=room_id,
+                sender=sender,
+                message_type=message_type,
+                content=message if self.settings.postgres.store_content else None,
+                content_length=len(message),
+                timestamp=timestamp
+            )
+            session.add(msg)
+            session.commit()
 
     async def message_callback(self, room: MatrixRoom, event: Event) -> None:
         """Callback for new messages"""
@@ -107,26 +108,15 @@ class MatrixInfluxBridge:
                 if isinstance(response, RoomMessagesResponse):
                     for event in response.chunk:
                         if isinstance(event, RoomMessageText):
-                            # Create InfluxDB point
-                            point = Point("matrix_message")\
-                                .tag("sender", event.source.get('sender', event.sender))\
-                                .tag("room_id", room_id)\
-                                .tag("message_type", type(event).__name__)\
-                                .time(event.source.get('origin_server_ts', event.server_timestamp))
-                            
-                            # Only store content if enabled
-                            if self.settings.influxdb.store_content:
-                                point = point.field("content", event.body)
-                            
-                            # Always store message length as a metric
-                            point = point.field("content_length", len(event.body))
-
-                            # Write to InfluxDB
-                            self.write_api.write(
-                                bucket=self.settings.influxdb.bucket,
-                                record=point
+                            # Store message in PostgreSQL
+                            self.store_message_in_db(
+                                room_id=room_id,
+                                sender=event.source.get('sender', event.sender),
+                                message=event.body,
+                                timestamp=datetime.fromtimestamp(event.source.get('origin_server_ts', event.server_timestamp) / 1000, tz=timezone.utc),
+                                message_type=type(event).__name__
                             )
-                            logger.debug(f"Wrote message from {event.sender} in room {room_id} to InfluxDB")
+                            logger.debug(f"Wrote message from {event.sender} in room {room_id} to PostgreSQL")
 
                     # Update sync time for this room
                     if response.chunk:
@@ -142,24 +132,13 @@ class MatrixInfluxBridge:
 
     async def handle_message(self, room_id: str, event: RoomMessageText) -> None:
         """Process a single message event"""
-        # Create InfluxDB point
-        point = Point("matrix_message")\
-            .tag("sender", event.source.get('sender', event.sender))\
-            .tag("room_id", room_id)\
-            .tag("message_type", type(event).__name__)\
-            .time(event.source.get('origin_server_ts', event.server_timestamp))
-        
-        # Only store content if enabled
-        if self.settings.influxdb.store_content:
-            point = point.field("content", event.body)
-        
-        # Always store message length as a metric
-        point = point.field("content_length", len(event.body))
-
-        # Write to InfluxDB
-        self.write_api.write(
-            bucket=self.settings.influxdb.bucket,
-            record=point
+        # Store message in PostgreSQL
+        self.store_message_in_db(
+            room_id=room_id,
+            sender=event.source.get('sender', event.sender),
+            message=event.body,
+            timestamp=datetime.fromtimestamp(event.source.get('origin_server_ts', event.server_timestamp) / 1000, tz=timezone.utc),
+            message_type=type(event).__name__
         )
 
     async def run(self) -> None:
@@ -186,7 +165,7 @@ async def main() -> None:
     
     # Set up logging before creating the bridge
     setup_logging(settings)
-    logger.info("Starting Matrix to InfluxDB bridge")
+    logger.info("Starting Matrix to PostgreSQL bridge")
     
     bridge: MatrixInfluxBridge = MatrixInfluxBridge(settings)
     try:
@@ -195,7 +174,6 @@ async def main() -> None:
         logger.info("Shutting down...")
     finally:
         await bridge.matrix_client.close()
-        bridge.influx_client.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

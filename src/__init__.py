@@ -1,4 +1,4 @@
-"""Matrix to InfluxDB bridge - A tool to archive Matrix chat messages into InfluxDB."""
+"""Matrix to PostgreSQL bridge - A tool to archive Matrix chat messages into PostgreSQL."""
 
 from importlib import metadata
 
@@ -12,14 +12,14 @@ except metadata.PackageNotFoundError:
     # Package is not installed
     pass
 
-from .config import Settings, MatrixConfig, InfluxDBConfig, LogConfig
+from .config import Settings, MatrixConfig, PostgresConfig, LogConfig
 from .logger import setup_logging, get_logger
 from .matrix_to_influx import MatrixInfluxBridge
 
 __all__ = [
     'Settings',
     'MatrixConfig',
-    'InfluxDBConfig',
+    'PostgresConfig',
     'LogConfig',
     'setup_logging',
     'get_logger',

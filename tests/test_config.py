@@ -4,7 +4,7 @@ import os
 import pytest
 from pydantic import ValidationError
 
-from src.config import Settings, MatrixConfig, InfluxDBConfig, LogConfig
+from src.config import Settings, MatrixConfig, PostgresConfig, LogConfig
 
 
 def test_matrix_config_validation():
@@ -33,21 +33,28 @@ def test_matrix_config_validation():
         MatrixConfig()
 
 
-def test_influxdb_config_validation():
-    """Test InfluxDBConfig validation."""
+def test_postgres_config_validation():
+    """Test PostgresConfig validation."""
     # Valid config
-    config = InfluxDBConfig(
-        url="http://localhost:8086",
-        token="test_token",
-        org="test_org",
-        bucket="test_bucket"
+    config = PostgresConfig(
+        host="0.0.0.0",
+        port=5432,
+        database="matrix_messages",
+        user="test",
+        password="test123",
+        store_content=True
     )
-    assert config.url == "http://localhost:8086"
-    assert config.token == "test_token"
+    assert config.host == "0.0.0.0"
+    assert config.port == 5432
+    assert config.database == "matrix_messages"
+    assert config.user == "test"
+    assert config.password == "test123"
+    assert config.store_content is True
+    assert config.url == "postgresql://test:test123@0.0.0.0:5432/matrix_messages"
     
     # Invalid config (missing required fields)
     with pytest.raises(ValidationError):
-        InfluxDBConfig()
+        PostgresConfig()
 
 
 def test_log_config_defaults():
@@ -63,8 +70,12 @@ def test_settings_from_env(test_settings: Settings):
     """Test Settings loads correctly from environment variables."""
     assert test_settings.matrix.homeserver == "https://test.matrix.org"
     assert test_settings.matrix.user == "@test:matrix.org"
-    assert test_settings.influxdb.url == "http://localhost:8086"
-    assert test_settings.influxdb.bucket == "test_bucket"
+    assert test_settings.postgres.host == "localhost"
+    assert test_settings.postgres.port == 5432
+    assert test_settings.postgres.database == "matrix_messages"
+    assert test_settings.postgres.user == "test"
+    assert test_settings.postgres.password == "test123"
+    assert test_settings.postgres.store_content is True
     assert len(test_settings.matrix.room_ids) == 2
     assert "!test1:matrix.org" in test_settings.matrix.room_ids
     assert "!test2:matrix.org" in test_settings.matrix.room_ids

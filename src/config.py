@@ -10,12 +10,19 @@ class MatrixConfig(BaseModel):
     room_ids: list[str] = []  # Empty list means all accessible rooms
 
 
-class InfluxDBConfig(BaseModel):
-    url: str
-    token: str
-    org: str
-    bucket: str
+class PostgresConfig(BaseModel):
+    """PostgreSQL configuration."""
+    host: str
+    port: int = 5432
+    database: str
+    user: str
+    password: str
     store_content: bool = False  # Controls whether message content is stored
+
+    @property
+    def url(self) -> str:
+        """Get the PostgreSQL connection URL."""
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
 
 
 class LogConfig(BaseModel):
@@ -26,7 +33,7 @@ class LogConfig(BaseModel):
 
 class Settings(BaseSettings):
     matrix: MatrixConfig
-    influxdb: InfluxDBConfig
+    postgres: PostgresConfig
     sync_state_file: str = "matrix_sync_state.json"
     logging: LogConfig = LogConfig()
 
@@ -50,16 +57,18 @@ class Settings(BaseSettings):
             room_ids=matrix_room_ids
         )
 
-        influxdb_config = InfluxDBConfig(
-            url=os.environ.get('INFLUXDB_URL', ''),
-            token=os.environ.get('INFLUXDB_TOKEN', ''),
-            org=os.environ.get('INFLUXDB_ORG', ''),
-            bucket=os.environ.get('INFLUXDB_BUCKET', '')
+        postgres_config = PostgresConfig(
+            host=os.environ.get('POSTGRES_HOST', 'localhost'),
+            port=int(os.environ.get('POSTGRES_PORT', '5432')),
+            database=os.environ.get('POSTGRES_DB', ''),
+            user=os.environ.get('POSTGRES_USER', ''),
+            password=os.environ.get('POSTGRES_PASSWORD', ''),
+            store_content=os.environ.get('POSTGRES_STORE_CONTENT', 'false').lower() == 'true'
         )
 
         # Initialize with parsed configs
         super().__init__(
             matrix=matrix_config,
-            influxdb=influxdb_config,
+            postgres=postgres_config,
             **kwargs
         )

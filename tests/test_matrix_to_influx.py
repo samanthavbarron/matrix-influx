@@ -1,22 +1,32 @@
-"""Tests for Matrix to InfluxDB bridge."""
+"""Tests for Matrix to PostgreSQL bridge."""
 
 import json
 from datetime import datetime, timezone
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from pytest_mock import MockerFixture
 from nio import (
     RoomMessageText, RoomMessagesResponse, RoomMessage,
     RoomMessageEmote, RoomMessageNotice, JoinedRoomsResponse
 )
-from influxdb_client import Point
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 from src.matrix_to_influx import MatrixInfluxBridge, main
+from src.schema import Base, Message
 
 
 @pytest.fixture
 def bridge(test_settings, mocker: MockerFixture):
     """Create a test bridge instance with mocked clients."""
+    # Mock SQLAlchemy engine and session before creating bridge
+    mock_engine = mocker.patch('sqlalchemy.create_engine')
+    mock_session = MagicMock(spec=Session)
+    mock_session_maker = mocker.patch('sqlalchemy.orm.Session')
+    mock_session_maker.return_value = mock_session
+    mock_session.__enter__.return_value = mock_session
+    mock_session.__exit__.return_value = None
+
     # Create bridge instance
     bridge = MatrixInfluxBridge(test_settings)
     
@@ -27,10 +37,8 @@ def bridge(test_settings, mocker: MockerFixture):
         rooms=["!test1:matrix.org", "!test2:matrix.org"]
     ))
     
-    # Mock InfluxDB write_api directly
-    mock_write_api = mocker.MagicMock()
-    mock_write_api.write = mocker.MagicMock()
-    bridge.write_api = mock_write_api
+    # Set mocked engine
+    bridge.engine = mock_engine.return_value
     
     return bridge
 
@@ -245,9 +253,9 @@ def mock_settings(mocker: MockerFixture, request):
     """Create mocked settings for testing."""
     settings = mocker.MagicMock()
     settings.matrix = mocker.MagicMock()
-    settings.influxdb = mocker.MagicMock()
+    settings.postgres = mocker.MagicMock()
     # Allow parametrizing store_content
-    settings.influxdb.store_content = getattr(request, 'param', {}).get('store_content', False)
+    settings.postgres.store_content = getattr(request, 'param', {}).get('store_content', False)
     return settings
 
 
@@ -261,7 +269,6 @@ async def test_main_normal_shutdown(mock_settings, mocker: MockerFixture):
     mock_bridge = mocker.MagicMock()
     mock_bridge.run = AsyncMock()
     mock_bridge.matrix_client = AsyncMock()
-    mock_bridge.influx_client = mocker.MagicMock()
     mock_bridge_cls = mocker.patch('src.matrix_to_influx.MatrixInfluxBridge', return_value=mock_bridge)
     
     # Mock Settings
@@ -275,7 +282,6 @@ async def test_main_normal_shutdown(mock_settings, mocker: MockerFixture):
     mock_bridge_cls.assert_called_once_with(mock_settings)
     mock_bridge.run.assert_called_once()
     mock_bridge.matrix_client.close.assert_called_once()
-    mock_bridge.influx_client.close.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -288,7 +294,6 @@ async def test_main_keyboard_interrupt(mock_settings, mocker: MockerFixture):
     mock_bridge = mocker.MagicMock()
     mock_bridge.run = AsyncMock(side_effect=KeyboardInterrupt)
     mock_bridge.matrix_client = AsyncMock()
-    mock_bridge.influx_client = mocker.MagicMock()
     mocker.patch('src.matrix_to_influx.MatrixInfluxBridge', return_value=mock_bridge)
     
     # Mock Settings
@@ -299,7 +304,6 @@ async def test_main_keyboard_interrupt(mock_settings, mocker: MockerFixture):
     
     # Verify cleanup was performed
     mock_bridge.matrix_client.close.assert_called_once()
-    mock_bridge.influx_client.close.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -309,24 +313,28 @@ async def test_main_keyboard_interrupt(mock_settings, mocker: MockerFixture):
 ], indirect=True)
 async def test_message_content_storage(mock_settings, mocker: MockerFixture):
     """Test that message content storage respects the store_content setting."""
-    # Mock setup_logging
-    mocker.patch('src.matrix_to_influx.setup_logging')
+    # Mock SQLAlchemy session
+    mock_session = MagicMock(spec=Session)
+    mock_session_maker = mocker.patch('sqlalchemy.orm.Session')
+    mock_session_maker.return_value = mock_session
+    mock_session.__enter__.return_value = mock_session
+    mock_session.__exit__.return_value = None
     
-    # Create a bridge instance
+    # Mock engine
+    mock_engine = mocker.patch('sqlalchemy.create_engine')
+    
+    # Create bridge
     bridge = MatrixInfluxBridge(mock_settings)
-    
-    # Mock the write_api
-    mock_write_api = mocker.MagicMock()
-    bridge.write_api = mock_write_api
+    bridge.engine = mock_engine.return_value
     
     # Create a test message
     test_message = "Test message content"
-    timestamp = int(datetime.now(timezone.utc).timestamp() * 1000)
+    timestamp = datetime.now(timezone.utc)
     event = RoomMessageText(
         source={
             "event_id": "!test1:matrix.org",
             "sender": "@test:matrix.org",
-            "origin_server_ts": timestamp
+            "origin_server_ts": int(timestamp.timestamp() * 1000)
         },
         body=test_message,
         formatted_body="<p>Test message content</p>",
@@ -336,23 +344,25 @@ async def test_message_content_storage(mock_settings, mocker: MockerFixture):
     # Process the message
     await bridge.handle_message("!test_room:matrix.org", event)
     
-    # Verify the write call
-    assert mock_write_api.write.called
-    call_args = mock_write_api.write.call_args[1]
-    point = call_args['record']
-    # Get all fields from the point
-    fields = {k: v for k, v in point._fields.items()}
+    # Verify the message was stored
+    mock_session.add.assert_called_once()
+    stored_msg = mock_session.add.call_args[0][0]
+    assert isinstance(stored_msg, Message)
     
     # Always check for content_length
-    assert 'content_length' in fields
-    assert fields['content_length'] == len(test_message)
+    assert stored_msg.content_length == len(test_message)
     
     # Check content field based on store_content setting
-    if mock_settings.influxdb.store_content:
-        assert 'content' in fields
-        assert fields['content'] == test_message
+    if mock_settings.postgres.store_content:
+        assert stored_msg.content == test_message
     else:
-        assert 'content' not in fields
+        assert stored_msg.content is None
+    
+    # Check other fields
+    assert stored_msg.room_id == "!test_room:matrix.org"
+    assert stored_msg.sender == "@test:matrix.org"
+    assert stored_msg.message_type == "RoomMessageText"
+    assert stored_msg.timestamp == timestamp
 
 
 class MockLoginResponse:

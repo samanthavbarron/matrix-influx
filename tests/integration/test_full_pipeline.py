@@ -1,13 +1,16 @@
-"""Integration tests for the full Matrix to InfluxDB pipeline."""
+"""Integration tests for the full Matrix to PostgreSQL pipeline."""
 
 import os
 import asyncio
 from nio.responses import LoginError, LoginResponse
 import pytest
 from nio import AsyncClient, RoomCreateResponse, RoomVisibility
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 from src.config import Settings
 from src.matrix_to_influx import MatrixInfluxBridge
+from src.schema import Base, Message
 
 
 @pytest.fixture
@@ -29,17 +32,15 @@ async def matrix_client(synapse_container) -> AsyncClient:
 
 
 @pytest.fixture
-def integration_settings(influxdb_container, synapse_container, temp_dir) -> Settings:
+def integration_settings(postgres_container, synapse_container, temp_dir) -> Settings:
     """Create settings for integration tests."""
     os.environ.update({
         'MATRIX_HOMESERVER': synapse_container["homeserver"],
         'MATRIX_USER': synapse_container["user"],
         'MATRIX_PASSWORD': synapse_container["password"],
         'MATRIX_ROOM_ID': synapse_container["room_id"],
-        'INFLUXDB_URL': influxdb_container["url"],
-        'INFLUXDB_TOKEN': influxdb_container["token"],
-        'INFLUXDB_ORG': influxdb_container["org"],
-        'INFLUXDB_BUCKET': influxdb_container["bucket"]
+        'POSTGRES_URL': postgres_container["url"],
+        'POSTGRES_STORE_CONTENT': 'true'
     })
     
     settings = Settings()
@@ -51,7 +52,7 @@ def integration_settings(influxdb_container, synapse_container, temp_dir) -> Set
 async def test_message_ingestion(
     integration_settings: Settings,
     matrix_client: AsyncClient,
-    influxdb_container: dict
+    postgres_container: dict
 ):
     """Test the full pipeline of message ingestion."""
     # Create test rooms
@@ -94,29 +95,20 @@ async def test_message_ingestion(
     # Fetch historical messages
     await bridge.fetch_historical_messages()
     
-    # Verify messages in InfluxDB
-    query = f'''
-    from(bucket: "{influxdb_container["bucket"]}")
-        |> range(start: 0)
-    '''
-    
-    result = bridge.influx_client.query_api().query(query)
-    messages_by_room = {}
-    for table in result:
-        for record in table:
-            room_id = record.values.get("room_id")
-            content = record.get_value()
-            if room_id not in messages_by_room:
-                messages_by_room[room_id] = []
-            messages_by_room[room_id].append(content)
-    
-    # Verify messages for each room
-    for room_id, expected_messages in test_messages.items():
-        assert room_id in messages_by_room
-        room_messages = messages_by_room[room_id]
-        assert len(room_messages) >= len(expected_messages)
-        for msg in expected_messages:
-            assert msg in room_messages
+    # Verify messages in PostgreSQL
+    engine = create_engine(integration_settings.postgres.url)
+    with Session(engine) as session:
+        for room_id, messages in test_messages.items():
+            for msg in messages:
+                stmt = select(Message).where(
+                    Message.room_id == room_id,
+                    Message.content == msg
+                )
+                result = session.execute(stmt).scalar_one_or_none()
+                assert result is not None
+                assert result.content == msg
+                assert result.room_id == room_id
+                assert result.message_type == "m.text"
 
 
 async def test_multi_room_sync_state(
@@ -159,6 +151,12 @@ async def test_multi_room_sync_state(
     original_sync_times = bridge1.room_sync_times.copy()
     assert all(ts is not None for ts in original_sync_times.values())
 
+    # Verify messages in PostgreSQL
+    with Session(bridge1.engine) as session:
+        stmt = select(Message).order_by(Message.timestamp)
+        initial_messages = session.execute(stmt).scalars().all()
+        assert len(initial_messages) == len(room_ids)
+    
     # Wait for some time to pass so the sync times are different
     await asyncio.sleep(3)
     
@@ -185,6 +183,12 @@ async def test_multi_room_sync_state(
     await bridge2.fetch_historical_messages()
     for room_id in room_ids:
         assert bridge2.room_sync_times[room_id] > original_sync_times[room_id]
+    
+    # Verify new messages in PostgreSQL
+    with Session(bridge2.engine) as session:
+        stmt = select(Message).order_by(Message.timestamp)
+        all_messages = session.execute(stmt).scalars().all()
+        assert len(all_messages) == len(room_ids) * 2  # Initial + new messages
 
 
 async def test_room_filtering(

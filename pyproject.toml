@@ -11,6 +11,7 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "pytest>=8.3.5",
+    "psycopg2>=2.9.10",
 ]
 
 [project.optional-dependencies]
