@@ -29,7 +29,7 @@ class MatrixInfluxBridge:
         self.matrix_client: AsyncClient = AsyncClient(
             settings.matrix.homeserver, settings.matrix.user
         )
-        self.engine = create_engine(settings.postgres.url)
+        self.engine = create_engine(settings.database.url)
         Base.metadata.create_all(self.engine)
         self.room_sync_times: Dict[str, Optional[int]] = {}
         self.last_sync_time: Optional[int] = None

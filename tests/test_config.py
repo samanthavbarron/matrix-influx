@@ -4,7 +4,7 @@ import os
 import pytest
 from pydantic import ValidationError
 
-from matrix_influx.config import Settings, MatrixConfig, PostgresConfig, LogConfig
+from matrix_influx.config import Settings, MatrixConfig, DatabaseConfig, LogConfig
 
 
 def test_matrix_config_validation():
@@ -31,10 +31,11 @@ def test_matrix_config_validation():
         MatrixConfig()
 
 
-def test_postgres_config_validation():
-    """Test PostgresConfig validation."""
-    # Valid config
-    config = PostgresConfig(
+def test_database_config_validation():
+    """Test DatabaseConfig validation for both PostgreSQL and SQLite."""
+    # Test PostgreSQL config
+    config = DatabaseConfig(
+        type="postgresql",
         host="0.0.0.0",
         port=5432,
         database="matrix_messages",
@@ -42,6 +43,7 @@ def test_postgres_config_validation():
         password="test123",
         store_content=True,
     )
+    assert config.type == "postgresql"
     assert config.host == "0.0.0.0"
     assert config.port == 5432
     assert config.database == "matrix_messages"
@@ -50,9 +52,28 @@ def test_postgres_config_validation():
     assert config.store_content is True
     assert config.url == "postgresql://test:test123@0.0.0.0:5432/matrix_messages"
 
+    # Test SQLite config
+    config = DatabaseConfig(
+        type="sqlite",
+        database="matrix_messages.db",
+        store_content=True,
+    )
+    assert config.type == "sqlite"
+    assert config.database == "matrix_messages.db"
+    assert config.store_content is True
+    assert config.url == "sqlite:///matrix_messages.db"
+
+    # Test invalid database type
+    with pytest.raises(ValueError):
+        config = DatabaseConfig(
+            type="invalid",
+            database="test.db"
+        )
+        _ = config.url
+
     # Invalid config (missing required fields)
     with pytest.raises(ValidationError):
-        PostgresConfig()
+        DatabaseConfig()
 
 
 def test_log_config_defaults():

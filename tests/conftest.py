@@ -15,16 +15,17 @@ def temp_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def test_settings(temp_dir: Path, postgres_container) -> Settings:
-    """Create test settings with mock values."""
+def test_settings(temp_dir: Path) -> Settings:
+    """Create test settings with mock values using SQLite."""
     os.environ.update(
         {
             "MATRIX_HOMESERVER": "https://test.matrix.org",
             "MATRIX_USER": "@test:matrix.org",
             "MATRIX_PASSWORD": "test_password",
             "MATRIX_ROOM_IDS": "!test1:matrix.org,!test2:matrix.org",
-            "POSTGRES_URL": postgres_container["url"],
-            "POSTGRES_STORE_CONTENT": "true",
+            "DATABASE_TYPE": "sqlite",
+            "SQLITE_DB": str(temp_dir / "test.db"),
+            "SQLITE_STORE_CONTENT": "true",
         }
     )
 
@@ -39,25 +40,6 @@ def mock_matrix_client(mocker: MockerFixture):
     """Create a mock Matrix client."""
     return mocker.patch("nio.AsyncClient", autospec=True)
 
-
-@pytest.fixture(scope="session")
-def postgres_container(docker_ip, docker_services):
-    """Create a PostgreSQL container for integration tests."""
-    port = docker_services.port_for("postgres", 5432)
-    url = f"postgresql://test:test123@{docker_ip}:{port}/matrix_messages"
-    docker_services.wait_until_responsive(
-        timeout=30.0,
-        pause=0.1,
-        check=lambda: docker_services.port_for("postgres", 5432) is not None,
-    )
-    return {
-        "host": docker_ip,
-        "port": port,
-        "database": "matrix_messages",
-        "user": "test",
-        "password": "test123",
-        "url": url,
-    }
 
 
 @pytest.fixture(scope="session")
