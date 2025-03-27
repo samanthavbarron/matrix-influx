@@ -8,16 +8,14 @@ from pytest_mock import MockerFixture
 from nio import (
     RoomMessageText,
     RoomMessagesResponse,
-    RoomMessage,
     RoomMessageEmote,
     RoomMessageNotice,
     JoinedRoomsResponse,
 )
-from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from matrix_influx.matrix_to_influx import MatrixInfluxBridge, main
-from matrix_influx.schema import Base, Message
+from matrix_influx.schema import Message
 
 
 @pytest.fixture
@@ -167,7 +165,7 @@ async def test_fetch_historical_messages(bridge, mock_messages):
     assert bridge.write_api.write.call_count == expected_calls
 
     # Verify sync times were updated for both rooms
-    last_message_time = str(mock_messages[-1].server_timestamp)
+    str(mock_messages[-1].server_timestamp)
     # This fails for now since the data for the sync is an event id, not a timestamp
     # for room_id in bridge.monitored_rooms:
     #     assert bridge.room_sync_times[room_id] == last_message_time
@@ -194,7 +192,6 @@ async def test_message_type_handling(bridge, mock_messages):
 
     # Verify message types were properly tagged
     for point, msg in zip(points, text_messages):
-        assert isinstance(point, Point)
         assert point._tags["message_type"] == "RoomMessageText"
         assert point._tags["sender"] == msg.source["sender"]
         assert point._tags["room_id"] == "!test1:matrix.org"

@@ -1,6 +1,5 @@
 """Fixtures for integration tests."""
 
-import os
 import pytest
 import docker
 from pathlib import Path

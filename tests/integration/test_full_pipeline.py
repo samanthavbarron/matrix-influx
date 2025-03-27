@@ -4,13 +4,13 @@ import os
 import asyncio
 from nio.responses import LoginError, LoginResponse
 import pytest
-from nio import AsyncClient, RoomCreateResponse, RoomVisibility
+from nio import AsyncClient, RoomVisibility
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from matrix_influx.config import Settings
 from matrix_influx.matrix_to_influx import MatrixInfluxBridge
-from matrix_influx.schema import Base, Message
+from matrix_influx.schema import Message
 
 
 @pytest.fixture

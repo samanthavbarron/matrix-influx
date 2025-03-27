@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-import pytest
 
 from matrix_influx.logger import setup_logging, get_logger
 
@@ -42,8 +41,8 @@ def test_log_rotation(test_settings, temp_dir: Path):
     large_msg = "x" * (test_settings.logging.max_size_mb * 1024 * 1024 + 1000)
     logger.info(large_msg)
 
-    log_path = Path(test_settings.logging.file_path)
-    backup_path = Path(f"{test_settings.logging.file_path}.1")
+    Path(test_settings.logging.file_path)
+    Path(f"{test_settings.logging.file_path}.1")
 
     # assert log_path.exists()
     # assert backup_path.exists()

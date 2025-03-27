@@ -3,21 +3,18 @@
 import json
 from datetime import datetime, timezone
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from pytest_mock import MockerFixture
 from nio import (
     RoomMessageText,
-    RoomMessagesResponse,
-    RoomMessage,
     RoomMessageEmote,
     RoomMessageNotice,
     JoinedRoomsResponse,
 )
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from matrix_influx.matrix_to_influx import MatrixInfluxBridge, main
-from matrix_influx.schema import Base, Message
+from matrix_influx.matrix_to_influx import MatrixInfluxBridge
+from matrix_influx.schema import Message
 
 
 @pytest.fixture
