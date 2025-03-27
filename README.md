@@ -1,3 +1,20 @@
+# Post-Mortem
+
+This was a test of me learning how to use Windsurf and Cursor (mainly Windsurf). Almost all of the code in this repo is AI generated.
+
+My initial idea for this project was that I would like all of my messages on my Matrix homeserver to be available to me in some sort of time series database. I have some previous familiarity with InfluxDB, so I started there. My goal in doing this with Windsurf/Cursor was to test out these tools and learn how to use them for myself.
+
+In doing so, I learned a few things:
+- As far as I can tell, these tools can function autonomously for a little bit, but are not currently designed to be entirely hands off (to be clear, I don't think they're advertised this way either).
+- It's very easy to get the AI run wild to the point where I don't intuitively understand the intent of the code.
+- InfluxDB was probably not a good initial choice for how to store the messages.
+- I become less personally invested in the project as I started to understand the code less.
+- I was unfortunately able to get neither tool to work with devcontainers. This was a huge limitation and I expect that devcontainers or something like it will be very important for making coding agents viable.
+
+There are likely better ways of using these tools, and I expect a more seasoned Windsurfer/Cursorer would have suggestions for how to address these points.
+
+As for the project, I am going to archive this because at this point it's fairly mangled. I plan on starting over and making a much simpler implementation. And I plan on doing it the old fasioned way.
+
 # Matrix to InfluxDB Bridge
 
 **NOTE FROM SAMANTHA:** This code was almost entirely generated with Windsurf.
