@@ -31,7 +31,7 @@ jobs:
 
     - name: Run integration tests
       run: |
-        pytest tests/integration/ -v --cov=src --cov-report=xml -W ignore::DeprecationWarning
+        pytest tests/integration/ -v --cov=matrix_influx --cov-report=xml -W ignore::DeprecationWarning
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

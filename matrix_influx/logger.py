@@ -2,7 +2,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from config import Settings
+from .config import Settings
 
 
 def setup_logging(settings: Settings) -> None:
@@ -13,8 +13,8 @@ def setup_logging(settings: Settings) -> None:
 
     # Create formatters and handlers
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # Console handler
@@ -25,14 +25,14 @@ def setup_logging(settings: Settings) -> None:
     file_handler = RotatingFileHandler(
         settings.logging.file_path,
         maxBytes=settings.logging.max_size_mb * 1024 * 1024,  # Convert MB to bytes
-        backupCount=settings.logging.backup_count
+        backupCount=settings.logging.backup_count,
     )
     file_handler.setFormatter(formatter)
 
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, settings.logging.level.upper()))
-    
+
     # Remove any existing handlers and add our new ones
     root_logger.handlers.clear()
     root_logger.addHandler(console_handler)

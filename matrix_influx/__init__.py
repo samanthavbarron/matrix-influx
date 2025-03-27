@@ -17,11 +17,11 @@ from .logger import setup_logging, get_logger
 from .matrix_to_influx import MatrixInfluxBridge
 
 __all__ = [
-    'Settings',
-    'MatrixConfig',
-    'PostgresConfig',
-    'LogConfig',
-    'setup_logging',
-    'get_logger',
-    'MatrixInfluxBridge',
+    "Settings",
+    "MatrixConfig",
+    "PostgresConfig",
+    "LogConfig",
+    "setup_logging",
+    "get_logger",
+    "MatrixInfluxBridge",
 ]

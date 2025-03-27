@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Generator
 import time
 
+
 @pytest.fixture(scope="session")
 def influxdb_container() -> Generator[dict, None, None]:
     """Start InfluxDB container for integration tests."""
     client = docker.from_env()
-    
+
     # Pull and start InfluxDB container
     container = client.containers.run(
         "influxdb:2.7",
@@ -25,18 +26,18 @@ def influxdb_container() -> Generator[dict, None, None]:
             "DOCKER_INFLUXDB_INIT_BUCKET": "test_bucket",
             "DOCKER_INFLUXDB_INIT_ADMIN_TOKEN": "test_token",
         },
-        ports={'8086/tcp': 8086}
+        ports={"8086/tcp": 8086},
     )
-    
+
     # Wait for InfluxDB to be ready
     time.sleep(5)
-    
+
     try:
         yield {
             "url": "http://localhost:8086",
             "token": "test_token",
             "org": "test_org",
-            "bucket": "test_bucket"
+            "bucket": "test_bucket",
         }
     finally:
         container.stop()
@@ -46,13 +47,13 @@ def influxdb_container() -> Generator[dict, None, None]:
 def synapse_container() -> Generator[dict, None, None]:
     """Start Synapse container for integration tests."""
     client = docker.from_env()
-    
+
     # Create temporary directory for Synapse data
     data_dir = Path("./synapse-data")
 
     if not data_dir.exists():
         data_dir.mkdir(exist_ok=True)
-    
+
         # Generate initial configuration using migrate_config
         client.containers.run(
             "matrixdotorg/synapse:latest",
@@ -63,18 +64,16 @@ def synapse_container() -> Generator[dict, None, None]:
                 "SYNAPSE_REPORT_STATS": "no",
                 "SYNAPSE_ENABLE_REGISTRATION": "yes",
                 "SYNAPSE_NO_TLS": "yes",
-                "SYNAPSE_LOG_LEVEL": "INFO"
+                "SYNAPSE_LOG_LEVEL": "INFO",
             },
-            volumes={
-                str(data_dir.absolute()): {'bind': '/data', 'mode': 'rw'}
-            }
+            volumes={str(data_dir.absolute()): {"bind": "/data", "mode": "rw"}},
         )
         line_to_write = "\nenable_registration_without_verification: true\n"
 
         # Add registration without verification to the generated config
         with open(data_dir / "homeserver.yaml", "a") as f:
             f.write(line_to_write)
-        
+
         # Replace all instances of `/homeserver.log` with `/data/homeserver.log`
         # in log.config
         with open(data_dir / "log.config", "r") as f:
@@ -88,7 +87,6 @@ def synapse_container() -> Generator[dict, None, None]:
         for file in data_dir.glob("*.log"):
             file.unlink()
 
-    
     # Start Synapse with the generated config
     container = client.containers.run(
         "matrixdotorg/synapse:latest",
@@ -98,10 +96,8 @@ def synapse_container() -> Generator[dict, None, None]:
             "SYNAPSE_LOG_LEVEL": "INFO",
             "SYNAPSE_ENABLE_REGISTRATION_WITHOUT_VERIFICATION": "true",
         },
-        volumes={
-            str(data_dir.absolute()): {'bind': '/data', 'mode': 'rw'}
-        },
-        ports={'8008/tcp': 8008}
+        volumes={str(data_dir.absolute()): {"bind": "/data", "mode": "rw"}},
+        ports={"8008/tcp": 8008},
     )
 
     def _cleanup():
@@ -113,7 +109,7 @@ def synapse_container() -> Generator[dict, None, None]:
             else:
                 file.rmdir()
         data_dir.rmdir()
-    
+
     # Wait for Synapse to be ready
     max_retries = 30
     retry_interval = 4
@@ -135,25 +131,28 @@ def synapse_container() -> Generator[dict, None, None]:
         time.sleep(retry_interval)
     else:
         raise TimeoutError("Synapse failed to start within the expected time")
-    
+
     # Create admin user
     container.exec_run(
         [
             "register_new_matrix_user",
-            "-c", "/data/homeserver.yaml",
+            "-c",
+            "/data/homeserver.yaml",
             "--admin",
-            "-u", "admin",
-            "-p", "admin_password",
-            "http://localhost:8008"
+            "-u",
+            "admin",
+            "-p",
+            "admin_password",
+            "http://localhost:8008",
         ]
     )
-    
+
     try:
         yield {
             "homeserver": "http://localhost:8008",
             "user": "@admin:test.local",
             "password": "admin_password",
-            "room_id": "!test:test.local"
+            "room_id": "!test:test.local",
         }
     finally:
         _cleanup()

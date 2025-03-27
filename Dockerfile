@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy project files
 COPY pyproject.toml README.md ./
-COPY src ./src/
+COPY matrix_influx ./matrix_influx/
 
 # Install dependencies and project
 RUN pip install --no-cache-dir .
@@ -22,4 +22,4 @@ RUN useradd -m matrixuser
 RUN chown -R matrixuser:matrixuser /app 
 USER matrixuser
 
-CMD ["python", "src/matrix_to_influx.py"]
+CMD ["python", "matrix_influx/matrix_to_influx.py"]

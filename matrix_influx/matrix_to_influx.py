@@ -1,28 +1,34 @@
 import asyncio
 import json
-import os
 from datetime import datetime, timezone
-from typing import Optional, Any, Dict, List, Set
-from pathlib import Path
+from typing import Dict, Optional
+
 from nio import (
-    AsyncClient, RoomMessageText, Response, LoginResponse,
-    MatrixRoom, Event, RoomMessagesResponse, MessageDirection,
-    RoomMember, RoomMemberEvent, JoinedRoomsResponse
+    AsyncClient,
+    Event,
+    LoginResponse,
+    MatrixRoom,
+    MessageDirection,
+    RoomMessagesResponse,
+    RoomMessageText,
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from config import Settings
-from logger import setup_logging, get_logger
-from schema import Base, Message
+from .config import Settings
+from .logger import get_logger, setup_logging
+from .schema import Base, Message
 
 # Create logger for this module
 logger = get_logger(__name__)
 
+
 class MatrixInfluxBridge:
     def __init__(self, settings: Settings) -> None:
         self.settings: Settings = settings
-        self.matrix_client: AsyncClient = AsyncClient(settings.matrix.homeserver, settings.matrix.user)
+        self.matrix_client: AsyncClient = AsyncClient(
+            settings.matrix.homeserver, settings.matrix.user
+        )
         self.engine = create_engine(settings.postgres.url)
         Base.metadata.create_all(self.engine)
         self.room_sync_times: Dict[str, Optional[int]] = {}
@@ -37,7 +43,7 @@ class MatrixInfluxBridge:
     def load_sync_state(self) -> None:
         """Load the last sync timestamp for each room from file"""
         try:
-            with open(self.settings.sync_state_file, 'r') as f:
+            with open(self.settings.sync_state_file, "r") as f:
                 state = json.load(f)
                 self.room_sync_times = {room: ts for room, ts in state.items()}
                 for room_id, timestamp in self.room_sync_times.items():
@@ -51,19 +57,30 @@ class MatrixInfluxBridge:
 
     def save_sync_state(self) -> None:
         """Save the current sync timestamp for each room to file"""
-        with open(self.settings.sync_state_file, 'w') as f:
+        with open(self.settings.sync_state_file, "w") as f:
             json.dump(self.room_sync_times, f)
 
     async def connect_to_matrix(self) -> None:
         """Connect to Matrix server and join the specified room"""
         logger.info(f"Logging in to Matrix as {self.settings.matrix.user}...")
-        response: LoginResponse = await self.matrix_client.login(password=self.settings.matrix.password)
+        response: LoginResponse = await self.matrix_client.login(
+            password=self.settings.matrix.password
+        )
         if not response.transport_response.ok:
-            logger.error(f"Failed to log in with status code: {response.transport_response.status}")
+            logger.error(
+                f"Failed to log in with status code: {response.transport_response.status}"
+            )
             raise Exception(f"Failed to log in: {response.transport_response.status}")
         logger.info("Successfully logged in")
 
-    def store_message_in_db(self, room_id: str, sender: str, message: str, timestamp: datetime, message_type: str) -> None:
+    def store_message_in_db(
+        self,
+        room_id: str,
+        sender: str,
+        message: str,
+        timestamp: datetime,
+        message_type: str,
+    ) -> None:
         """Store a Matrix message in PostgreSQL"""
         with Session(self.engine) as session:
             msg = Message(
@@ -72,7 +89,7 @@ class MatrixInfluxBridge:
                 message_type=message_type,
                 content=message if self.settings.postgres.store_content else None,
                 content_length=len(message),
-                timestamp=timestamp
+                timestamp=timestamp,
             )
             session.add(msg)
             session.commit()
@@ -80,9 +97,11 @@ class MatrixInfluxBridge:
     async def message_callback(self, room: MatrixRoom, event: Event) -> None:
         """Callback for new messages"""
         if isinstance(event, RoomMessageText):
-            logger.debug(f"New message in {room.room_id} from {event.sender}: {event.body}")
+            logger.debug(
+                f"New message in {room.room_id} from {event.sender}: {event.body}"
+            )
             await self.handle_message(room.room_id, event)
-            
+
             # Update sync state with the latest message timestamp
             self.last_sync_time = max(event.server_timestamp, self.last_sync_time or 0)
             self.save_sync_state()
@@ -92,7 +111,9 @@ class MatrixInfluxBridge:
         for room_id in self.monitored_rooms:
             last_sync = self.room_sync_times.get(room_id)
             if not last_sync:
-                logger.info(f"No previous sync time for room {room_id}, fetching all available messages...")
+                logger.info(
+                    f"No previous sync time for room {room_id}, fetching all available messages..."
+                )
             else:
                 logger.info(f"Fetching messages for room {room_id} since {last_sync}")
 
@@ -102,7 +123,7 @@ class MatrixInfluxBridge:
                     room_id=room_id,
                     start=None if not last_sync else str(last_sync),
                     limit=100,
-                    direction=MessageDirection.front
+                    direction=MessageDirection.front,
                 )
 
                 if isinstance(response, RoomMessagesResponse):
@@ -111,12 +132,20 @@ class MatrixInfluxBridge:
                             # Store message in PostgreSQL
                             self.store_message_in_db(
                                 room_id=room_id,
-                                sender=event.source.get('sender', event.sender),
+                                sender=event.source.get("sender", event.sender),
                                 message=event.body,
-                                timestamp=datetime.fromtimestamp(event.source.get('origin_server_ts', event.server_timestamp) / 1000, tz=timezone.utc),
-                                message_type=type(event).__name__
+                                timestamp=datetime.fromtimestamp(
+                                    event.source.get(
+                                        "origin_server_ts", event.server_timestamp
+                                    )
+                                    / 1000,
+                                    tz=timezone.utc,
+                                ),
+                                message_type=type(event).__name__,
                             )
-                            logger.debug(f"Wrote message from {event.sender} in room {room_id} to PostgreSQL")
+                            logger.debug(
+                                f"Wrote message from {event.sender} in room {room_id} to PostgreSQL"
+                            )
 
                     # Update sync time for this room
                     if response.chunk:
@@ -124,7 +153,9 @@ class MatrixInfluxBridge:
                         self.save_sync_state()
 
                 else:
-                    logger.error(f"Failed to fetch messages from room {room_id}: {response}")
+                    logger.error(
+                        f"Failed to fetch messages from room {room_id}: {response}"
+                    )
 
             except Exception as e:
                 logger.error(f"Error fetching messages from room {room_id}: {e}")
@@ -135,16 +166,19 @@ class MatrixInfluxBridge:
         # Store message in PostgreSQL
         self.store_message_in_db(
             room_id=room_id,
-            sender=event.source.get('sender', event.sender),
+            sender=event.source.get("sender", event.sender),
             message=event.body,
-            timestamp=datetime.fromtimestamp(event.source.get('origin_server_ts', event.server_timestamp) / 1000, tz=timezone.utc),
-            message_type=type(event).__name__
+            timestamp=datetime.fromtimestamp(
+                event.source.get("origin_server_ts", event.server_timestamp) / 1000,
+                tz=timezone.utc,
+            ),
+            message_type=type(event).__name__,
         )
 
     async def run(self) -> None:
         """Main run loop"""
         await self.connect_to_matrix()
-        
+
         # Join the room if not already joined
         for room_id in self.monitored_rooms:
             await self.matrix_client.join(room_id)
@@ -160,13 +194,14 @@ class MatrixInfluxBridge:
         logger.info("Starting sync loop for new messages...")
         await self.matrix_client.sync_forever(timeout=30000)
 
+
 async def main() -> None:
     settings: Settings = Settings()
-    
+
     # Set up logging before creating the bridge
     setup_logging(settings)
     logger.info("Starting Matrix to PostgreSQL bridge")
-    
+
     bridge: MatrixInfluxBridge = MatrixInfluxBridge(settings)
     try:
         await bridge.run()
@@ -174,6 +209,7 @@ async def main() -> None:
         logger.info("Shutting down...")
     finally:
         await bridge.matrix_client.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
