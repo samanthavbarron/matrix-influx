@@ -11,7 +11,10 @@
                 "editor.codeActionsOnSave": {
                     "source.organizeImports": true
                 }
-            }
+            },
+            "extensions": [
+                "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/bs-code/vsextensions/git-quick-stage/latest/vspackage"
+            ]
         }
     },
     "postCreateCommand": "pip install -e '.[test,integration]'"
